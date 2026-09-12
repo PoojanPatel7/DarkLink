@@ -52,7 +52,9 @@ app.get("/api/info", async (req, res) => {
   const host = req.headers["x-forwarded-host"] || req.headers.host || `${localIp}:${PORT}`;
   const isSecure = req.headers["x-forwarded-proto"] === "https" || req.secure;
   const wsProtocol = isSecure ? "wss" : "ws";
-  const wsUrl = `${wsProtocol}://${host}/ws`;
+  const baseWsUrl = `${wsProtocol}://${host}/ws`;
+  const uid = req.query.uid;
+  const wsUrl = uid ? `${baseWsUrl}?uid=${encodeURIComponent(uid)}` : baseWsUrl;
 
   const pairingPayload = JSON.stringify({
     app: "DarkLink",
@@ -113,11 +115,12 @@ wss.on("connection", (ws, req) => {
   let role = url.searchParams.get("role"); // "android" or "browser"
   const deviceId = url.searchParams.get("deviceId") || `phone_${Date.now()}`;
   const uid = url.searchParams.get("uid") || null;
+  const model = url.searchParams.get("model") || "Android Phone";
 
   if (role === "android") {
     const deviceRecord = {
       id: deviceId,
-      model: "Android Phone",
+      model: model,
       uid: uid,
       width: 720,
       height: 1600,
@@ -197,6 +200,8 @@ wss.on("connection", (ws, req) => {
           if (data.type === "device_info") {
             latestDeviceInfo = data;
             if (record) {
+              if (data.deviceId) record.id = data.deviceId;
+              if (data.uid) record.uid = data.uid;
               record.model = `${data.manufacturer || ""} ${data.model || ""}`.trim() || record.model;
               record.width = data.width;
               record.height = data.height;
