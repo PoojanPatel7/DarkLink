@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DarkLink — 60 FPS Wireless Android Mirroring</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="logo-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">DarkLink 60 FPS</span>
+          <span class="brand-subtitle">Samsung & Android Phone Mirroring for Windows</span>
+        </div>
+      </div>
+
+      <div class="header-hud">
+        <div id="statusBadge" class="hud-pill offline">
+          <span class="status-dot"></span>
+          <span id="statusText">Waiting for Phone...</span>
+        </div>
+        <div class="hud-pill stat-pill fps-highlight">
+          <span class="hud-label">FPS</span>
+          <span id="fpsCounter" class="hud-value">60</span>
+        </div>
+        <div class="hud-pill stat-pill">
+          <span class="hud-label">Latency</span>
+          <span id="latencyCounter" class="hud-value">-- ms</span>
+        </div>
+        <div id="lockBadge" class="hud-pill stat-pill lock-pill" title="Phone Lock State">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span id="lockStatusText">Unlocked</span>
+        </div>
+        <div id="stealthIndicator" class="hud-pill stealth-pill hidden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+            <line x1="1" y1="1" x2="23" y2="23"></line>
+          </svg>
+          <span>STEALTH ON (Screen Dark)</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- View Size Adjustment (Zoom / Scale) -->
+        <div class="zoom-control-group" title="Adjust Phone View Size">
+          <button id="btnZoomOut" class="btn-icon" title="Zoom Out (-)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <span id="zoomLevelDisplay" class="zoom-text">100%</span>
+          <button id="btnZoomIn" class="btn-icon" title="Zoom In (+)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button id="btnFitScreen" class="btn-icon" title="Fit to Screen Height">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Floating Window Over Other Apps (Always-On-Top PiP) -->
+        <button id="btnFloatingPiP" class="btn-pip" title="Float phone window over other Windows apps (Always on Top)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <rect x="11" y="9" width="9" height="7" rx="1" ry="1" fill="currentColor" fill-opacity="0.35"></rect>
+          </svg>
+          <span>Float on Top</span>
+        </button>
+
+        <!-- Dark Screen on Phone Toggle -->
+        <button id="btnToggleDarkScreen" class="btn-stealth-toggle" title="Turn physical phone screen pitch black at home">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <span id="darkScreenText">Dark Screen: OFF</span>
+        </button>
+
+        <!-- Remote PIN Unlock Modal -->
+        <button id="btnRemoteUnlock" class="btn-unlock-modal" title="Remote PIN / Pattern Unlock">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Enter PIN</span>
+        </button>
+
+        <!-- Google Account Sign-In -->
+        <button id="btnGoogleAuth" class="btn-google-auth" title="Sign in with Google">
+          <svg width="15" height="15" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span id="googleAuthText">Google Sign-In</span>
+        </button>
+
+        <!-- Connected Devices Drawer -->
+        <button id="btnDeviceList" class="btn-secondary" title="View Paired Devices">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+          <span id="deviceCountLabel">Devices</span>
+        </button>
+
+        <!-- Pair Phone via QR -->
+        <button id="btnOpenQr" class="btn-primary" title="Pair Phone via QR Code">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>Pair Phone</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Stage -->
+    <main class="workspace">
+        <!-- Phone Screen Container (Pure Screen View, No Fake Bezels or Rails) -->
+        <div id="phoneChassis" class="phone-chassis">
+          <div class="screen-viewport" id="screenViewport">
+            <!-- Idle / Standby Overlay -->
+            <div id="standbyScreen" class="standby-overlay">
+              <div class="standby-card">
+                <div class="standby-icon-ring">
+                  <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#06B6D4" stroke-width="2">
+                    <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+                    <circle cx="12" cy="18" r="1"></circle>
+                  </svg>
+                </div>
+                <h3>Samsung / Android Mirror</h3>
+                <p>Scan the QR code on DarkLink to start ultra-smooth 60 FPS hardware streaming.</p>
+                <button id="btnScanPairPrompt" class="btn-accent">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                  </svg>
+                  <span>Show Pairing QR Code</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Hardware 60 FPS Canvas -->
+            <canvas id="screenCanvas"></canvas>
+
+            <!-- Cursor Touch Ripple -->
+            <div id="touchRipple" class="touch-ripple"></div>
+
+            <!-- FLAG_SECURE Banking / Protected Screen Notification -->
+            <div id="secureAppBanner" class="secure-app-banner hidden">
+              <div class="secure-banner-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </div>
+              <div class="secure-banner-text">
+                <div class="secure-banner-title">🔒 Protected Screen (Bank / Secure App)</div>
+                <div class="secure-banner-desc">Android OS blocks video recording for banking apps via <code>FLAG_SECURE</code> to protect your financial data. Please view and enter PIN directly on your phone.</div>
+              </div>
+              <button id="btnDismissSecure" class="secure-banner-close" title="Dismiss">&times;</button>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Bar (Completely OUT of the screen canvas) -->
+          <div id="screenNavBar" class="screen-nav-bar" title="Phone Controls">
+            <button id="navBtnBack" class="nav-bar-btn" title="Back (Right-Click)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button id="navBtnHome" class="nav-bar-btn primary" title="Home">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="7"></circle>
+              </svg>
+            </button>
+            <button id="navBtnRecents" class="nav-bar-btn" title="Recent Apps">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+              </svg>
+            </button>
+            <div class="nav-bar-divider"></div>
+            <button id="navBtnPower" class="nav-bar-btn power" title="Turn Phone Screen Off (Stealth Mode)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
+            </button>
+            <button id="navBtnUnlock" class="nav-bar-btn unlock" title="Swipe Up to Unlock">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Floating Remote Control Dock -->
+        <div class="control-dock">
+          <!-- Power / Screen Off (Stealth Lock) -->
+          <button class="dock-btn power-dock-btn" id="btnPower" title="Power: Turn Phone Screen Off (Keep PC Mirror Active)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+            <span class="dock-tooltip">Screen Off (Use from PC)</span>
+          </button>
+
+          <!-- System PIN Lock -->
+          <button class="dock-btn" id="btnSystemLock" title="System Lock (Android Keyguard PIN)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span class="dock-tooltip">System PIN Lock</span>
+          </button>
+
+          <!-- Swipe Up to Unlock -->
+          <button class="dock-btn" id="btnSwipeUnlock" title="Swipe Up to Unlock / Dismiss PIN">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            <span class="dock-tooltip">Swipe to Unlock</span>
+          </button>
+
+          <div class="dock-divider"></div>
+
+          <!-- Android Global Controls -->
+          <button class="dock-btn" id="btnBack" title="Back (Right Click)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span class="dock-tooltip">Back</span>
+          </button>
+
+          <button class="dock-btn primary" id="btnHome" title="Home">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="7"></circle>
+            </svg>
+            <span class="dock-tooltip">Home</span>
+          </button>
+
+          <button class="dock-btn" id="btnRecents" title="Recent Apps">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+            </svg>
+            <span class="dock-tooltip">Recents</span>
+          </button>
+
+          <div class="dock-divider"></div>
+
+          <!-- System Utilities -->
+          <button class="dock-btn" id="btnNotifications" title="Notifications">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="dock-tooltip">Notifications</span>
+          </button>
+
+          <button class="dock-btn" id="btnQuickSettings" title="Quick Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
+            </svg>
+            <span class="dock-tooltip">Quick Settings</span>
+          </button>
+
+          <button class="dock-btn" id="btnVolumeUp" title="Volume Up">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+            <span class="dock-tooltip">Volume +</span>
+          </button>
+
+          <button class="dock-btn" id="btnVolumeDown" title="Volume Down">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+            <span class="dock-tooltip">Volume -</span>
+          </button>
+
+          <div class="dock-divider"></div>
+
+          <!-- Stealth Mode (Blackout Phone Screen) -->
+          <button class="dock-btn stealth-btn" id="btnToggleStealth" title="Toggle Phone Screen Blackout / Stealth Mode">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <span class="dock-tooltip">Stealth Mode (Screen Off)</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- QR Code Pairing Modal -->
+    <div id="qrModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h3>Pair Android Phone</h3>
+            <p>Scan with the DarkLink Android app on your phone</p>
+          </div>
+          <button id="btnCloseModal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="qr-container">
+            <img id="qrImage" src="" alt="Pairing QR Code" />
+            <div id="qrLoading" class="qr-loading">Generating QR code...</div>
+          </div>
+          <div class="connection-meta">
+            <div class="meta-row">
+              <span class="meta-label">Wi-Fi IP Address:</span>
+              <code id="metaIp">Loading...</code>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">WebSocket URL:</span>
+              <code id="metaWs">Loading...</code>
+            </div>
+            <div class="meta-note">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span>Phone and PC must be on the same Wi-Fi network.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Remote PIN Unlock Modal -->
+    <div id="unlockModal" class="modal-backdrop hidden">
+      <div class="modal-card pin-modal-card">
+        <div class="modal-header">
+          <div>
+            <h3>Remote Phone Unlock</h3>
+            <p>Enter your Android PIN or Pattern to unlock remotely</p>
+          </div>
+          <button id="btnCloseUnlockModal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body pin-modal-body">
+          <div class="pin-display-wrapper">
+            <input type="password" id="remotePinInput" placeholder="••••" maxlength="8" readonly />
+            <button id="btnPinClear" class="btn-pin-backspace" title="Backspace">⌫</button>
+          </div>
+          <div class="pin-keypad-grid">
+            <button class="pin-key" data-digit="1">1</button>
+            <button class="pin-key" data-digit="2">2</button>
+            <button class="pin-key" data-digit="3">3</button>
+            <button class="pin-key" data-digit="4">4</button>
+            <button class="pin-key" data-digit="5">5</button>
+            <button class="pin-key" data-digit="6">6</button>
+            <button class="pin-key" data-digit="7">7</button>
+            <button class="pin-key" data-digit="8">8</button>
+            <button class="pin-key" data-digit="9">9</button>
+            <button class="pin-key pin-swipe-key" id="btnPinSwipeOnly" title="Swipe Up Only">Swipe</button>
+            <button class="pin-key" data-digit="0">0</button>
+            <button class="pin-key pin-submit-key" id="btnPinSubmit" title="Send PIN & Unlock">OK</button>
+          </div>
+          <div class="pin-help-text">
+            <span>💡 Tap digits or type PIN on your PC keyboard, then click OK.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connected Devices Switcher Modal -->
+    <div id="deviceModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h3>Paired Devices</h3>
+            <p>Select a phone connected to this DarkLink relay</p>
+          </div>
+          <button id="btnCloseDeviceModal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="deviceListContainer" class="device-list-container">
+            <div class="device-loading">Loading devices...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tamper Alert Toast Notification -->
+    <div id="tamperToast" class="tamper-toast hidden">
+      <div class="tamper-icon">⚠️</div>
+      <div class="tamper-content">
+        <div class="tamper-title">Security Alert at Home</div>
+        <div id="tamperMessage" class="tamper-desc">Physical touch detected on phone screen! Device locked automatically.</div>
+      </div>
+      <button id="btnCloseTamperToast" class="tamper-close">&times;</button>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import { initFirebaseAuth } from "./firebase-auth.js";
+    initFirebaseAuth((user) => {
+      if (user) {
+        console.log("[DarkLink] Firebase user authenticated:", user.email);
+      }
+    }, (devices) => {
+      console.log("[DarkLink] Synchronized devices from Firestore:", devices);
+    });
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
