@@ -22,64 +22,80 @@ export const db = getFirestore(app);
 export const provider = new GoogleAuthProvider();
 
 let currentUser = null;
+let firestoreDevices = [];
 
 export function initFirebaseAuth(onUserChanged, onDevicesUpdated) {
-  const btnGoogleAuth = document.getElementById("btnGoogleAuth");
-  const googleAuthText = document.getElementById("googleAuthText");
-  const authGateModal = document.getElementById("authGateModal");
-  const btnGateGoogleSignIn = document.getElementById("btnGateGoogleSignIn");
+  const authScreen = document.getElementById("authScreen");
+  const mainAppContainer = document.getElementById("mainAppContainer");
+  const btnGoogleSignInMain = document.getElementById("btnGoogleSignInMain");
+  const userEmailBadge = document.getElementById("userEmailBadge");
+  const userAvatarCircle = document.getElementById("userAvatarCircle");
+  const modalUserEmail = document.getElementById("modalUserEmail");
+  const btnSignOut = document.getElementById("btnSignOut");
+
+  function triggerGoogleSignIn() {
+    if (btnGoogleSignInMain) btnGoogleSignInMain.disabled = true;
+    signInWithPopup(auth, provider)
+      .catch((err) => {
+        console.error("[DarkLink Firebase] Sign-in error:", err);
+        alert("Google Sign-In failed: " + err.message);
+      })
+      .finally(() => {
+        if (btnGoogleSignInMain) btnGoogleSignInMain.disabled = false;
+      });
+  }
+
+  if (btnGoogleSignInMain) {
+    btnGoogleSignInMain.addEventListener("click", triggerGoogleSignIn);
+  }
+
+  if (btnSignOut) {
+    btnSignOut.addEventListener("click", () => {
+      if (confirm("Sign out of DarkLink?")) {
+        signOut(auth);
+      }
+    });
+  }
 
   // Authentication state listener
   onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
-      console.log("[DarkLink Firebase] Signed in:", user.email);
-      if (googleAuthText) googleAuthText.textContent = user.displayName ? user.displayName.split(" ")[0] : user.email.split("@")[0];
-      if (btnGoogleAuth) {
-        btnGoogleAuth.classList.add("signed-in");
-        btnGoogleAuth.title = `Signed in as ${user.email} (Click to Sign Out)`;
-      }
-      // Hide the mandatory gate
-      if (authGateModal) authGateModal.classList.add("hidden");
+      console.log("[DarkLink Firebase] Authenticated:", user.email);
 
-      // Listen to devices registered under this user's Google account
-      listenToUserDevices(user.uid, onDevicesUpdated);
+      // 1. Transition from Auth Screen to Main Page
+      if (authScreen) authScreen.classList.add("hidden");
+      if (mainAppContainer) mainAppContainer.classList.remove("hidden");
+
+      // 2. Display User Profile Info
+      const shortEmail = user.email || "Google User";
+      if (userEmailBadge) userEmailBadge.textContent = shortEmail;
+      if (modalUserEmail) modalUserEmail.textContent = shortEmail;
+
+      if (userAvatarCircle) {
+        if (user.photoURL) {
+          userAvatarCircle.innerHTML = `<img src="${user.photoURL}" alt="avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`;
+        } else {
+          userAvatarCircle.textContent = (user.displayName ? user.displayName[0] : user.email[0]).toUpperCase();
+        }
+      }
+
+      // 3. Listen to devices registered under this user's Google account in Firestore
+      listenToUserDevices(user.uid, (devices) => {
+        firestoreDevices = devices;
+        if (onDevicesUpdated) onDevicesUpdated(devices);
+      });
+
       if (onUserChanged) onUserChanged(user);
     } else {
-      console.log("[DarkLink Firebase] User signed out");
-      if (googleAuthText) googleAuthText.textContent = "Sign In";
-      if (btnGoogleAuth) {
-        btnGoogleAuth.classList.remove("signed-in");
-        btnGoogleAuth.title = "Sign in with Google";
-      }
-      // Show mandatory gate
-      if (authGateModal) authGateModal.classList.remove("hidden");
+      console.log("[DarkLink Firebase] User signed out / unauthenticated");
+      // Show Auth Screen, hide Main Page
+      if (authScreen) authScreen.classList.remove("hidden");
+      if (mainAppContainer) mainAppContainer.classList.add("hidden");
+
       if (onUserChanged) onUserChanged(null);
     }
   });
-
-  function triggerGoogleSignIn() {
-    signInWithPopup(auth, provider).catch((err) => {
-      console.error("[DarkLink Firebase] Sign-in error:", err);
-      alert("Sign-in failed: " + err.message);
-    });
-  }
-
-  if (btnGateGoogleSignIn) {
-    btnGateGoogleSignIn.addEventListener("click", triggerGoogleSignIn);
-  }
-
-  if (btnGoogleAuth) {
-    btnGoogleAuth.addEventListener("click", () => {
-      if (currentUser) {
-        if (confirm(`Sign out of Google Account (${currentUser.email})?`)) {
-          signOut(auth);
-        }
-      } else {
-        triggerGoogleSignIn();
-      }
-    });
-  }
 }
 
 function listenToUserDevices(uid, onDevicesUpdated) {
@@ -91,7 +107,7 @@ function listenToUserDevices(uid, onDevicesUpdated) {
     });
     if (onDevicesUpdated) onDevicesUpdated(devices);
   }, (err) => {
-    console.warn("[DarkLink Firebase] Firestore listener:", err.message);
+    console.warn("[DarkLink Firebase] Firestore listener error:", err.message);
   });
 }
 
@@ -109,3 +125,11 @@ export async function registerDeviceInFirestore(deviceId, deviceData) {
     console.error("[DarkLink Firebase] Failed to register device:", err);
   }
 }
+
+// Global hook for app.js
+window.DarkLinkAuth = {
+  getUser: () => currentUser,
+  getDevices: () => firestoreDevices,
+  registerDevice: registerDeviceInFirestore,
+  signOut: () => signOut(auth)
+};

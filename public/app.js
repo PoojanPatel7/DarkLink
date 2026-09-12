@@ -92,6 +92,11 @@
   let currentZoom = 1.0;
   let pipWindow = null;
 
+  // Multi-Device state
+  let activeDeviceId = null;
+  let onlineDevices = [];
+  let savedFirestoreDevices = [];
+
   // Touch tracking state
   let isPointerDown = false;
   let lastX = 0;
@@ -171,7 +176,9 @@
   // 2. Fetch Network Pairing Info
   async function loadConnectionInfo() {
     try {
-      const res = await fetch("/api/info");
+      const user = window.DarkLinkAuth ? window.DarkLinkAuth.getUser() : null;
+      const uidQuery = user ? `?uid=${encodeURIComponent(user.uid)}` : "";
+      const res = await fetch(`/api/info${uidQuery}`);
       const data = await res.json();
       if (data.success) {
         metaIp.textContent = data.ip + ":" + data.port;
@@ -306,12 +313,47 @@
   function handleServerMessage(msg) {
     if (msg.type === "status") {
       updatePhoneStatus(msg.connected);
+      if (msg.deviceId && !activeDeviceId) {
+        activeDeviceId = msg.deviceId;
+      }
+      if (msg.deviceInfo) {
+        statusText.textContent = `Streaming: ${msg.deviceInfo.manufacturer || ""} ${msg.deviceInfo.model || "Phone"}`.trim();
+      }
       if (msg.lockState) {
         updateLockState(msg.lockState.locked, msg.lockState.screenOn);
       }
       if (msg.stealthState !== undefined) {
         setStealthUI(msg.stealthState);
       }
+    } else if (msg.type === "devices_updated") {
+      onlineDevices = msg.devices || [];
+      if (!activeDeviceId && onlineDevices.length > 0) {
+        activeDeviceId = onlineDevices[0].id;
+        statusText.textContent = `Streaming: ${onlineDevices[0].model || "Phone"}`;
+      }
+      updateDeviceCount();
+      renderDevicesList();
+
+      // Automatically register connected devices to Firestore under the user's account
+      if (window.DarkLinkAuth && window.DarkLinkAuth.getUser()) {
+        const user = window.DarkLinkAuth.getUser();
+        onlineDevices.forEach((dev) => {
+          window.DarkLinkAuth.registerDevice(dev.id, {
+            id: dev.id,
+            model: dev.model,
+            width: dev.width,
+            height: dev.height,
+            userEmail: user.email
+          });
+        });
+      }
+    } else if (msg.type === "device_selected") {
+      activeDeviceId = msg.deviceId;
+      const target = onlineDevices.find(d => d.id === msg.deviceId);
+      if (target && statusText) {
+        statusText.textContent = `Streaming: ${target.model || "Phone"}`;
+      }
+      renderDevicesList();
     } else if (msg.type === "lock_state") {
       updateLockState(msg.locked, msg.screenOn);
     } else if (msg.type === "stealth_state") {
@@ -842,49 +884,130 @@
     }
   });
 
-  // 11. Device Switcher Modal Controls
+  // 11. Device Switcher & Management
+  function updateDeviceCount() {
+    const allDeviceIds = new Set([
+      ...onlineDevices.map(d => d.id),
+      ...savedFirestoreDevices.map(d => d.id)
+    ]);
+    if (deviceCountLabel) {
+      deviceCountLabel.textContent = `Devices (${allDeviceIds.size})`;
+    }
+  }
+
+  function selectDevice(deviceId) {
+    activeDeviceId = deviceId;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "select_device",
+        deviceId: deviceId
+      }));
+    }
+    const targetDev = onlineDevices.find(d => d.id === deviceId) || savedFirestoreDevices.find(d => d.id === deviceId);
+    if (targetDev && statusText) {
+      statusText.textContent = `Streaming: ${targetDev.model || "Phone"}`;
+    }
+    renderDevicesList();
+  }
+
+  function renderDevicesList() {
+    if (!deviceListContainer) return;
+
+    const deviceMap = new Map();
+
+    savedFirestoreDevices.forEach((d) => {
+      deviceMap.set(d.id, { ...d, isOnline: false });
+    });
+
+    onlineDevices.forEach((d) => {
+      deviceMap.set(d.id, { ...d, isOnline: true });
+    });
+
+    const devices = Array.from(deviceMap.values());
+
+    if (devices.length === 0) {
+      deviceListContainer.innerHTML = `
+        <div class="empty-device-state">
+          <div class="empty-device-icon">📱</div>
+          <h4 style="margin: 0 0 6px 0; color: #fff;">No Devices Linked Yet</h4>
+          <p style="margin: 0; font-size: 0.88rem;">Click "Pair / Add Another Device" below to connect your first phone.</p>
+        </div>
+      `;
+      return;
+    }
+
+    deviceListContainer.innerHTML = "";
+    devices.forEach((dev) => {
+      const isOnline = !!dev.isOnline;
+      const isSelected = dev.id === activeDeviceId;
+
+      const card = document.createElement("div");
+      card.className = `device-card ${isSelected ? "device-card-active" : ""}`;
+      card.innerHTML = `
+        <div class="device-card-left">
+          <div class="device-avatar ${isOnline ? "online" : "offline"}">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
+          <div class="device-card-info">
+            <div class="device-card-header">
+              <span class="device-card-name">${dev.model || "Android Phone"}</span>
+              ${isSelected ? '<span class="device-badge-active">Streaming</span>' : ""}
+            </div>
+            <div class="device-card-meta">
+              <span class="${isOnline ? "device-badge-online" : "device-badge-offline"}">
+                ● ${isOnline ? "Online & Ready" : "Offline"}
+              </span>
+              <span>•</span>
+              <span class="device-id-code">${dev.id}</span>
+              ${dev.width ? `<span>•</span><span>${dev.width}x${dev.height}</span>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="device-card-actions">
+          ${
+            isSelected
+              ? `<button class="btn-selected-pill" disabled>✓ Active</button>`
+              : isOnline
+              ? `<button class="btn-primary btn-connect-dev" data-dev-id="${dev.id}">Select & Stream</button>`
+              : `<button class="btn-secondary btn-connect-dev" disabled>Offline</button>`
+          }
+        </div>
+      `;
+
+      const connectBtn = card.querySelector(".btn-connect-dev:not([disabled])");
+      if (connectBtn) {
+        connectBtn.addEventListener("click", () => {
+          selectDevice(dev.id);
+          closeDeviceModal();
+          sendToPhone({ type: "wake" });
+          sendToPhone({ type: "request_keyframe" });
+        });
+      }
+
+      deviceListContainer.appendChild(card);
+    });
+  }
+
   async function openDeviceModal() {
     if (deviceModal) deviceModal.classList.remove("hidden");
-    if (!deviceListContainer) return;
-    deviceListContainer.innerHTML = '<div class="device-loading">Scanning for connected phones...</div>';
+    renderDevicesList();
 
     try {
       const res = await fetch("/api/devices");
       const data = await res.json();
-      if (data.success && data.devices.length > 0) {
-        deviceListContainer.innerHTML = "";
-        data.devices.forEach((dev) => {
-          const card = document.createElement("div");
-          card.className = "device-card";
-          card.innerHTML = `
-            <div class="device-card-info">
-              <span class="device-card-name">${dev.model || "Android Phone"}</span>
-              <div class="device-card-meta">
-                <span class="device-badge-online">● Online</span>
-                <span>•</span>
-                <span>${dev.isLocked ? "🔒 Locked" : "🔓 Unlocked"}</span>
-                <span>•</span>
-                <span>${dev.width}x${dev.height}</span>
-              </div>
-            </div>
-            <button class="btn-primary btn-connect-dev">Connect</button>
-          `;
-          card.querySelector(".btn-connect-dev").addEventListener("click", () => {
-            closeDeviceModal();
-            sendToPhone({ type: "wake" });
-            sendToPhone({ type: "request_keyframe" });
-          });
-          deviceListContainer.appendChild(card);
-        });
-      } else {
-        deviceListContainer.innerHTML = `
-          <div style="text-align: center; color: var(--text-muted); padding: 18px;">
-            No phones currently connected. Open DarkLink on your phone and tap Start Mirroring.
-          </div>
-        `;
+      if (data.success) {
+        onlineDevices = data.devices || [];
+        if (!activeDeviceId && onlineDevices.length > 0) {
+          activeDeviceId = onlineDevices[0].id;
+        }
+        updateDeviceCount();
+        renderDevicesList();
       }
     } catch (err) {
-      deviceListContainer.innerHTML = `<div style="color: #EF4444;">Error loading devices: ${err.message}</div>`;
+      console.warn("Fetch devices:", err);
     }
   }
 
@@ -900,13 +1023,21 @@
     });
   }
 
+  const btnModalAddDevice = document.getElementById("btnModalAddDevice");
+  if (btnModalAddDevice) {
+    btnModalAddDevice.addEventListener("click", () => {
+      closeDeviceModal();
+      openQrModal();
+    });
+  }
+
   if (btnCloseTamperToast && tamperToast) {
     btnCloseTamperToast.addEventListener("click", () => {
       tamperToast.classList.add("hidden");
     });
   }
 
-  // 12. QR Modal Controls
+  // 12. QR Modal Controls (Add Device)
   function openQrModal() {
     loadConnectionInfo();
     qrModal.classList.remove("hidden");
@@ -922,6 +1053,13 @@
   qrModal.addEventListener("click", (e) => {
     if (e.target === qrModal) closeQrModal();
   });
+
+  // Global callback for Firestore devices sync
+  window.updateFirestoreDevices = (devices) => {
+    savedFirestoreDevices = devices || [];
+    updateDeviceCount();
+    renderDevicesList();
+  };
 
   // Start
   loadConnectionInfo();

@@ -87,46 +87,11 @@ app.get("/api/info", async (req, res) => {
 });
 
 // Multi-device tracking
-const phoneClients = new Map(); // ws -> { id, model, width, height, isLocked, isScreenOn, isStealth, connectedAt }
+const phoneClients = new Map(); // ws -> { id, model, width, height, isLocked, isScreenOn, isStealth, uid, connectedAt }
 const browserClients = new Set();
 let latestDeviceInfo = null;
 let currentLockState = { locked: false, screenOn: true };
 let currentStealthState = false;
-
-// API: Get connection info and dynamic QR code
-app.get("/api/info", async (req, res) => {
-  const wsUrl = `ws://${localIp}:${PORT}/ws`;
-  const pairingPayload = JSON.stringify({
-    app: "DarkLink",
-    ip: localIp,
-    port: PORT,
-    wsUrl: wsUrl,
-    version: "1.0"
-  });
-
-  try {
-    const qrDataUrl = await QRCode.toDataURL(pairingPayload, {
-      margin: 2,
-      width: 320,
-      color: {
-        dark: "#06B6D4",
-        light: "#0B0F17"
-      }
-    });
-
-    res.json({
-      success: true,
-      ip: localIp,
-      port: PORT,
-      wsUrl: wsUrl,
-      qrDataUrl: qrDataUrl,
-      activePhones: phoneClients.size,
-      activeBrowsers: browserClients.size
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // API: Get active devices list
 app.get("/api/devices", (req, res) => {
@@ -147,11 +112,13 @@ wss.on("connection", (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let role = url.searchParams.get("role"); // "android" or "browser"
   const deviceId = url.searchParams.get("deviceId") || `phone_${Date.now()}`;
+  const uid = url.searchParams.get("uid") || null;
 
   if (role === "android") {
     const deviceRecord = {
       id: deviceId,
       model: "Android Phone",
+      uid: uid,
       width: 720,
       height: 1600,
       isLocked: currentLockState.locked,
@@ -160,7 +127,7 @@ wss.on("connection", (ws, req) => {
       connectedAt: new Date().toISOString()
     };
     phoneClients.set(ws, deviceRecord);
-    console.log(`[DarkLink] Android phone connected: ${deviceId}. Total phones: ${phoneClients.size}`);
+    console.log(`[DarkLink] Android phone connected: ${deviceId} (uid: ${uid}). Total phones: ${phoneClients.size}`);
 
     broadcastToBrowsers(JSON.stringify({
       type: "status",
@@ -171,7 +138,10 @@ wss.on("connection", (ws, req) => {
       lockState: currentLockState,
       stealthState: currentStealthState
     }));
+
+    broadcastDevicesList();
   } else if (role === "browser") {
+    ws.selectedDeviceId = null;
     browserClients.add(ws);
     console.log(`[DarkLink] Browser client connected. Total browsers: ${browserClients.size}`);
     ws.send(JSON.stringify({
@@ -181,6 +151,12 @@ wss.on("connection", (ws, req) => {
       deviceInfo: latestDeviceInfo,
       lockState: currentLockState,
       stealthState: currentStealthState
+    }));
+
+    // Send active devices list
+    ws.send(JSON.stringify({
+      type: "devices_updated",
+      devices: Array.from(phoneClients.values())
     }));
   }
 
@@ -192,8 +168,9 @@ wss.on("connection", (ws, req) => {
         if (parsed.type === "register") {
           role = parsed.role;
           if (role === "android") {
-            phoneClients.set(ws, { id: parsed.deviceId || deviceId, model: "Android Phone" });
+            phoneClients.set(ws, { id: parsed.deviceId || deviceId, model: "Android Phone", uid: parsed.uid || null });
             broadcastToBrowsers(JSON.stringify({ type: "status", connected: true, role: "android" }));
+            broadcastDevicesList();
           } else {
             browserClients.add(ws);
           }
@@ -203,24 +180,27 @@ wss.on("connection", (ws, req) => {
     }
 
     if (role === "android") {
+      const record = phoneClients.get(ws);
       if (isBinary) {
-        // High-speed binary frame forwarding to all browser clients
+        // High-speed binary frame forwarding: forward to browsers targeting this device or without selection
         for (const browser of browserClients) {
           if (browser.readyState === WebSocket.OPEN) {
-            browser.send(message, { binary: true });
+            if (!browser.selectedDeviceId || (record && browser.selectedDeviceId === record.id)) {
+              browser.send(message, { binary: true });
+            }
           }
         }
       } else {
         try {
           const data = JSON.parse(message.toString());
-          const record = phoneClients.get(ws);
 
           if (data.type === "device_info") {
             latestDeviceInfo = data;
             if (record) {
-              record.model = `${data.manufacturer || ""} ${data.model || ""}`.trim();
+              record.model = `${data.manufacturer || ""} ${data.model || ""}`.trim() || record.model;
               record.width = data.width;
               record.height = data.height;
+              broadcastDevicesList();
             }
           } else if (data.type === "lock_state") {
             currentLockState = { locked: data.locked, screenOn: data.screenOn };
@@ -245,10 +225,43 @@ wss.on("connection", (ws, req) => {
         }
       }
     } else if (role === "browser") {
-      // Forward commands/touch/keys from browser to Android phone(s)
-      for (const [phone] of phoneClients.entries()) {
-        if (phone.readyState === WebSocket.OPEN) {
-          phone.send(message, { binary: isBinary });
+      try {
+        if (!isBinary) {
+          const data = JSON.parse(message.toString());
+          if (data.type === "select_device") {
+            ws.selectedDeviceId = data.deviceId;
+            console.log(`[DarkLink] Browser selected device: ${data.deviceId}`);
+            ws.send(JSON.stringify({ type: "device_selected", deviceId: data.deviceId }));
+
+            // Trigger wake & keyframe on selected phone
+            for (const [phoneWs, phoneRec] of phoneClients.entries()) {
+              if (phoneRec.id === data.deviceId && phoneWs.readyState === WebSocket.OPEN) {
+                phoneWs.send(JSON.stringify({ type: "wake" }));
+                phoneWs.send(JSON.stringify({ type: "request_keyframe" }));
+                break;
+              }
+            }
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // Forward commands/touch/keys from browser to target Android phone
+      let targetFound = false;
+      if (ws.selectedDeviceId) {
+        for (const [phoneWs, phoneRec] of phoneClients.entries()) {
+          if (phoneRec.id === ws.selectedDeviceId && phoneWs.readyState === WebSocket.OPEN) {
+            phoneWs.send(message, { binary: isBinary });
+            targetFound = true;
+            break;
+          }
+        }
+      }
+      if (!targetFound) {
+        for (const [phoneWs] of phoneClients.entries()) {
+          if (phoneWs.readyState === WebSocket.OPEN) {
+            phoneWs.send(message, { binary: isBinary });
+          }
         }
       }
     }
@@ -256,13 +269,15 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     if (role === "android") {
+      const rec = phoneClients.get(ws);
       phoneClients.delete(ws);
-      console.log(`[DarkLink] Android phone disconnected. Remaining phones: ${phoneClients.size}`);
+      console.log(`[DarkLink] Android phone disconnected: ${rec ? rec.id : ""}. Remaining phones: ${phoneClients.size}`);
       broadcastToBrowsers(JSON.stringify({
         type: "status",
         connected: phoneClients.size > 0,
         role: "android"
       }));
+      broadcastDevicesList();
     } else if (role === "browser") {
       browserClients.delete(ws);
       console.log(`[DarkLink] Browser client disconnected. Remaining browsers: ${browserClients.size}`);
@@ -273,6 +288,14 @@ wss.on("connection", (ws, req) => {
     console.error("[DarkLink] WebSocket error:", err.message);
   });
 });
+
+function broadcastDevicesList() {
+  const payload = JSON.stringify({
+    type: "devices_updated",
+    devices: Array.from(phoneClients.values())
+  });
+  broadcastToBrowsers(payload);
+}
 
 function broadcastToBrowsers(data) {
   for (const client of browserClients) {
