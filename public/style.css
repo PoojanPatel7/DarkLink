@@ -733,23 +733,23 @@ body.in-pip-mode .screen-nav-bar {
 }
 
 .qr-container {
-  background: #0B0F17;
-  padding: 14px;
+  background: #FFFFFF;
+  padding: 16px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+  border: 2px solid #06B6D4;
+  box-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 250px;
-  min-width: 250px;
+  min-height: 270px;
+  min-width: 270px;
 }
 
 .qr-container img {
-  width: 250px;
-  height: 250px;
+  width: 260px;
+  height: 260px;
   display: block;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 .connection-meta {

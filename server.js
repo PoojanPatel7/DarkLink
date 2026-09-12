@@ -67,10 +67,10 @@ app.get("/api/info", async (req, res) => {
   try {
     const qrDataUrl = await QRCode.toDataURL(pairingPayload, {
       margin: 2,
-      width: 320,
+      width: 360,
       color: {
-        dark: "#06B6D4",
-        light: "#0B0F17"
+        dark: "#000000",
+        light: "#FFFFFF"
       }
     });
 

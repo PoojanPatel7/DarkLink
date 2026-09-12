@@ -958,12 +958,13 @@
             </div>
             <div class="device-card-meta">
               <span class="${isOnline ? "device-badge-online" : "device-badge-offline"}">
-                ● ${isOnline ? "Online & Ready" : "Offline"}
+                ● ${isOnline ? "Online & Ready" : "Offline (Not Streaming)"}
               </span>
               <span>•</span>
               <span class="device-id-code">${dev.id}</span>
               ${dev.width ? `<span>•</span><span>${dev.width}x${dev.height}</span>` : ""}
             </div>
+            ${!isOnline ? '<div style="font-size:0.75rem; color:#94a3b8; margin-top:3px;">Open DarkLink on this phone & tap "Connect & Start Mirroring" to stream.</div>' : ''}
           </div>
         </div>
         <div class="device-card-actions">
@@ -972,7 +973,7 @@
               ? `<button class="btn-selected-pill" disabled>✓ Active</button>`
               : isOnline
               ? `<button class="btn-primary btn-connect-dev" data-dev-id="${dev.id}">Select & Stream</button>`
-              : `<button class="btn-secondary btn-connect-dev" disabled>Offline</button>`
+              : `<button class="btn-secondary btn-pair-dev" title="Open QR Code to connect this phone">Pair via QR</button>`
           }
         </div>
       `;
@@ -984,6 +985,14 @@
           closeDeviceModal();
           sendToPhone({ type: "wake" });
           sendToPhone({ type: "request_keyframe" });
+        });
+      }
+
+      const pairBtn = card.querySelector(".btn-pair-dev");
+      if (pairBtn) {
+        pairBtn.addEventListener("click", () => {
+          closeDeviceModal();
+          openQrModal();
         });
       }
 
